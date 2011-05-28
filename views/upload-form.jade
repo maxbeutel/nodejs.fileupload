@@ -1,0 +1,10 @@
+script(type="text/javascript", src="/nodejs-upload-assets/upload-form.js")
+
+form(method="post", enctype="multipart\/form-data")
+    input(type="hidden", name="sid", value=sessionId)
+
+    p Image:
+        input(type="file", name="image")
+    p
+        input(type="submit", value="upload")
+

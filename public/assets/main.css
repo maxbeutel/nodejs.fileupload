@@ -1,0 +1,10 @@
+* {
+    margin:0;
+    padding:0;
+}
+
+#upload-form iframe {
+    width:500px;
+    height:300px;
+    border:0;
+}
