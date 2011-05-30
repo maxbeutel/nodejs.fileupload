@@ -21,6 +21,20 @@ $(document).ready(function() {
             socket.disconnect();
             alert('Authentication failed');
         }
+
+        if (message.type == 'progess-update') {
+
+        }
+
+        if (message.type == 'finish-success') {
+            $('#upload-form').hide();
+            socket.disconnect();
+        }
+
+        if (message.type == 'finish-failed') {
+            socket.disconnect();
+            alert('Upload failed');
+        }
     });
 
     socket.connect();
