@@ -38,7 +38,7 @@ app.post('/', function(req, res, next) {
         var percent = (bytesReceived / bytesExpected * 100) | 0;
 
         if (percent != lastPercent) {
-            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-progess', percent: percent }));
+            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-progress', percent: percent }));
             console.log('Uploading: %' + percent + '\n');
         }
 
