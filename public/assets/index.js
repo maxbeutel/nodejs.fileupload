@@ -25,8 +25,12 @@ $(document).ready(function() {
             alert('Authentication failed');
         }
 
+        if (message.type == 'upload-start') {
+            console.log('### Starting upload', message);
+        }
+
         if (message.type == 'upload-progress') {
-            console.log('Updating progress');
+            console.log('### Updating progress');
             $('#upload-status').html('Uploading: ' + message.percent + '%');
         }
 

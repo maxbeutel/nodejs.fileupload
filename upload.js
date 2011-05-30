@@ -32,7 +32,7 @@ app.post('/', function(req, res, next) {
     var uploadSessionId = req.session.uploadSessionId;
     var lastPercent = 0;
     
-    console.log('### Starting upload for: ', req.session);
+    console.log('### Starting upload for: ', uploadSessionId);
 
     req.form.on('progress', function(bytesReceived, bytesExpected) {
         var percent = (bytesReceived / bytesExpected * 100) | 0;
