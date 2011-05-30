@@ -1,6 +1,6 @@
 script(type="text/javascript", src="/nodejs-upload-assets/upload-form.js")
 
-form(method="post", enctype="multipart\/form-data")
+form(method="post", enctype="multipart\/form-data", action="/nodejs-upload/")
     input(type="hidden", name="sid", value=sessionId)
 
     p Image:

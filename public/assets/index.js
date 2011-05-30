@@ -22,16 +22,16 @@ $(document).ready(function() {
             alert('Authentication failed');
         }
 
-        if (message.type == 'progess-update') {
+        if (message.type == 'upload-progress') {
 
         }
 
-        if (message.type == 'finish-success') {
+        if (message.type == 'upload-success') {
             $('#upload-form').hide();
             socket.disconnect();
         }
 
-        if (message.type == 'finish-failed') {
+        if (message.type == 'upload-failure') {
             socket.disconnect();
             alert('Upload failed');
         }
