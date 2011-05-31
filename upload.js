@@ -42,6 +42,7 @@ app.post('/', function(req, res, next) {
     req.form.on('progress', function(bytesReceived, bytesExpected) {
         var percent = (bytesReceived / bytesExpected * 100) | 0;
 
+        // dont flood client with messages - check if progress really changed since last time
         if (percent != lastPercent) {
             redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-progress', percent: percent }));
             console.log('Uploading: %' + percent + '\n');
