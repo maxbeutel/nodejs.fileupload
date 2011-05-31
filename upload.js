@@ -64,6 +64,7 @@ app.post('/', function(req, res, next) {
                 } else {
                     // @TODO maybe store some custom data
                     // @TODO use correct mimetype
+                    // @TODO escape user provided filename!
                     riakClient.save('images', files.image.filename, image, { contentType: 'jpeg' });
                     redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
                     res.redirect('back');
