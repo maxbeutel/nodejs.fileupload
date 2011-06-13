@@ -54,6 +54,7 @@ app.post('/', function(req, res, next) {
 
         if (bytesReceived > MAX_UPLOAD_SIZE) {
             console.log('### ERROR: file too large');
+            req.form.removeAllListeners('progress');
             redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'file too large' }));
             return;
         }
@@ -68,6 +69,7 @@ app.post('/', function(req, res, next) {
             
             if (!ALLOWED_MIME_TYPES[mimetype]) {
                 console.log('### ERROR: invalid mimetype');
+                req.form.removeAllListeners('progress');
                 redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'invalid file type' }));
                 return;
             }
