@@ -46,8 +46,13 @@ app.post('/', function(req, res, next) {
 
     console.log('### Starting upload for: ', uploadSessionId);
 
-    req.form.on('fileBegin', function(filedName, fileInfo) {
-        tmpPath = fileInfo.path;
+    req.form.on('fileBegin', function catchTmpPath(filedName, fileInfo) {
+        if (fileInfo.path) {
+            console.log('### caught tmp path!');
+
+            tmpPath = fileInfo.path;
+            req.form.removeListener('fileBegin', catchTmpPath);
+        }
     });
 
     req.form.on('progress', function(bytesReceived, bytesExpected) {
