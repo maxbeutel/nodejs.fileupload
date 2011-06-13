@@ -59,6 +59,10 @@ socket.on('connection', function(client) {
                             // handle specific message types, pass message through to client
                             //
 
+                            if (message.type == 'upload-start') {
+                                // nothing to do for us for now
+                            }
+
                             if (message.type == 'upload-progress') {
                                 // nothing to do for us for now
                             }

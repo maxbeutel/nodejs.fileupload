@@ -8,7 +8,8 @@ var express = require('express'),
     riak = require('riak-js'),
     form = require('connect-form'),
     fs = require('fs'),
-    mime = require('mime');
+    mime = require('mime'),
+    sanitize = require('validator').sanitize;
 
 var app = express.createServer(form({ keepExtensions: true }));
 app.set('view engine', 'jade');
@@ -46,7 +47,7 @@ app.post('/', function(req, res, next) {
 
     console.log('### Starting upload for: ', uploadSessionId);
 
-    req.form.on('fileBegin', function catchTmpPath(filedName, fileInfo) {
+    req.form.on('fileBegin', function catchTmpPath(_, fileInfo) {
         if (fileInfo.path) {
             console.log('### caught tmp path!');
 
@@ -55,13 +56,29 @@ app.post('/', function(req, res, next) {
         }
     });
 
+    req.form.on('fileBegin', function publishUploadStart(_, fileInfo) {
+        if (fileInfo.name) {
+            console.log('### FILENAME: ', fileInfo.name);
+            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-start', filename: sanitize(fileInfo.name).xss() }));
+            req.form.removeListener('fileBegin', publishUploadStart);
+        }
+        /*
+        if (fileInfo.path) {
+            console.log('### caught tmp path!');
+
+            tmpPath = fileInfo.path;
+            req.form.removeListener('fileBegin', catchTmpPath);
+        }*/
+    });
+
+
     req.form.on('progress', function handleProgress(bytesReceived, bytesExpected) {
         var percent = (bytesReceived / bytesExpected * 100) | 0;
 
         if (bytesReceived > MAX_UPLOAD_SIZE) {
             console.log('### ERROR: file too large');
             req.form.removeListener('progress', handleProgress);
-            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'file too large' }));
+            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'file too large' }));
             uploadFailed = true;
             return;
         }
@@ -77,7 +94,7 @@ app.post('/', function(req, res, next) {
             if (!ALLOWED_MIME_TYPES[mimetype]) {
                 console.log('### ERROR: invalid mimetype');
                 req.form.removeListener('progress', handleProgress);
-                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'invalid file type' }));
+                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'invalid file type' }));
                 uploadFailed = true;
                 return;
             }
@@ -92,7 +109,7 @@ app.post('/', function(req, res, next) {
         lastPercent = percent;
     });
 
-    req.form.complete(function(err, fields, files) {
+    req.form.complete(function(err, _, files) {
         // @TODO remove global state variable, this is ugly
         if (uploadFailed) {
             fs.unlinkSync(tmpPath);
@@ -114,7 +131,6 @@ app.post('/', function(req, res, next) {
                 } else {
                     // @TODO maybe store some custom data
                     // @TODO use correct mimetype
-                    // @TODO escape user provided filename!
 
                     // leave riak out for now
                     // @TODO it would be better anyway to stream content to bucket
