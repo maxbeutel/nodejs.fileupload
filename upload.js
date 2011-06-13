@@ -11,6 +11,7 @@ var express = require('express'),
     mime = require('mime'),
     sanitize = require('validator').sanitize,
     sys = require('sys'),
+    path = require('path'),
     exec = require('child_process').exec;
 
 var app = express.createServer(form({ keepExtensions: true }));
@@ -23,6 +24,7 @@ app.use(express.session({ secret: 'oi098ahsd789jlkdasl', store: new RedisStore()
 
 var redisPubSubClient = redis.createClient();
 
+
 // @TODO would be nice to do some round-robin here/later on in order to not always connect to the same node
 var riakClient = riak.getClient({ host: '127.0.0.1', port: 8010 });
 
@@ -31,6 +33,7 @@ app.get('/', function(req, res) {
     var sessionId = req.cookies['connect.sid'];
     res.render('index', { sessionId: sessionId });
 });
+
 
 // form
 app.get('/upload-form', function(req, res) {
@@ -44,8 +47,11 @@ app.post('/', function(req, res, next) {
     var uploadSessionId = req.session.uploadSessionId;
     var lastPercent = 0;
     var tmpPath = '';
-    var didMimetypeLookup = false;
-    var uploadFailed = false;
+
+    var validatorsState = {
+        filesize: { executed: false, valid: true },
+        mimetype: { executed: false, valid: true }
+    };
 
     console.log('### Starting upload for: ', uploadSessionId);
 
@@ -67,48 +73,9 @@ app.post('/', function(req, res, next) {
     });
 
 
-    req.form.on('progress', function handleProgress(bytesReceived, bytesExpected) {
+
+    req.form.on('progress', function publishProgress(bytesReceived, bytesExpected) {
         var percent = (bytesReceived / bytesExpected * 100) | 0;
-
-        if (bytesReceived > MAX_UPLOAD_SIZE) {
-            console.log('### ERROR: file too large');
-            req.form.removeListener('progress', handleProgress);
-            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'file too large' }));
-            fs.unlinkSync(tmpPath);
-            uploadFailed = true;
-            return;
-        }
-
-        // this is rather ugly
-        // and sucks anyway as mime only makes an lookup based on file extesion not based on file header
-        // @FIXME find something that works
-        if (tmpPath != '' && !didMimetypeLookup) {
-            didMimetypeLookup = true;
-
-            var child = exec('file --mime-type ' + tmpPath, function (error, stdout, stderr) {
-                var mimetype = stdout.substring(stdout.lastIndexOf(':') + 2, stdout.lastIndexOf('\n'));
-
-                if (!ALLOWED_MIME_TYPES[mimetype]) {
-                    console.log('### ERROR: invalid mimetype');
-                    req.form.removeListener('progress', handleProgress);
-                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'invalid file type' }));
-                    uploadFailed = true;
-                }
-            });
-
-
-/*
-            var mimetype = mime.lookup(tmpPath);
-            
-            if (!ALLOWED_MIME_TYPES[mimetype]) {
-                console.log('### ERROR: invalid mimetype');
-                req.form.removeListener('progress', handleProgress);
-                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'invalid file type' }));
-                uploadFailed = true;
-                return;
-            }
-*/
-        }
 
         // dont flood client with messages - check if progress really changed since last time
         if (percent != lastPercent) {
@@ -117,41 +84,92 @@ app.post('/', function(req, res, next) {
         }
 
         lastPercent = percent;
+    });
 
-        if (didMimetypeLookup && !uploadFailed && req.form.listeners('end').length == 0) {
-            req.form.on('end', function() {
-                        console.log('### uploaded to %s', tmpPath);
+    req.form.on('progress', function validateMaxSize(bytesReceived, bytesExpected) {
+        validatorsState.filesize.executed = true;
 
-                        if (false) {
-                            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
-                            next(err);
-                        } else {
-                            fs.readFile(tmpPath, 'binary', function(err, image) {
-                                if (err) {
-                                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
-                                    next(err);
-                                } else {
-                                    // @TODO maybe store some custom data
-                                    // @TODO use correct mimetype
+        if (bytesReceived > MAX_UPLOAD_SIZE) {
+            validatorsState.filesize.valid = false;
 
-                                    // leave riak out for now
-                                    // @TODO it would be better anyway to stream content to bucket
-                                    //riakClient.save('images', files.image.filename, image, { contentType: 'jpeg' });
-                                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
-                                    res.redirect('back');
-                                }
-                            });
-                        }
-            });
+            console.log('### ERROR: file too large');
+
+            req.form.removeAllListeners('end');
+            req.form.removeAllListeners('progress');
+
+            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'file too large' }));
+
+            fs.unlinkSync(tmpPath);
         }
+    });
+
+    req.form.on('progress', function validateMimetype() {
+        if (tmpPath == '') {
+            return;
+        }
+
+        req.form.removeListener('progress', validateMimetype);
+
+        var child = exec('file --mime-type ' + tmpPath, function (error, stdout, stderr) {
+            validatorsState.mimetype.executed = true;
+
+            var mimetype = stdout.substring(stdout.lastIndexOf(':') + 2, stdout.lastIndexOf('\n'));
+
+            if (!ALLOWED_MIME_TYPES[mimetype]) {
+                validatorsState.mimetype.valid = false;
+
+                console.log('### ERROR: invalid mimetype');
+
+                req.form.removeAllListeners('end');
+                req.form.removeAllListeners('progress');
+
+                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'invalid file type' }));
+                
+                fs.unlinkSync(tmpPath);
+            } else {
+                validatorsState.mimetype.valid = true;
+            }
+        });
+    });
+
+
+
+    req.form.on('end', function() {
+        if (!validatorsState.filesize.executed || !validatorsState.filesize.valid) {
+            console.log('### Invalid state: filesize validator not executed or invalid!');
+            
+            res.redirect('back');
+
+            return;
+        }
+
+        if (!validatorsState.mimetype.executed || !validatorsState.mimetype.valid) {
+            console.log('### Invalid state: mimetype validator not executed or invalid!');
+
+            res.redirect('back');
+
+            return;
+        }
+
+        console.log('### uploaded to', tmpPath);
+
+        path.exists(tmpPath, function(exists) {
+            if (exists) {
+                console.log('### upload succeeded');
+
+                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
+
+                res.redirect('back');
+            } else {
+                console.log('### ERROR: uploaded file does not exists');
+
+                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
+            }
+        });
     });
 
 
     req.form.complete();
-
-
-
-
 });
 
 app.listen(3020);
