@@ -42,6 +42,7 @@ app.post('/', function(req, res, next) {
     var lastPercent = 0;
     var tmpPath = '';
     var didMimetypeLookup = false;
+    var uploadFailed = false;
 
     console.log('### Starting upload for: ', uploadSessionId);
 
@@ -56,6 +57,7 @@ app.post('/', function(req, res, next) {
             console.log('### ERROR: file too large');
             req.form.removeAllListeners('progress');
             redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'file too large' }));
+            uploadFailed = true;
             return;
         }
 
@@ -71,6 +73,7 @@ app.post('/', function(req, res, next) {
                 console.log('### ERROR: invalid mimetype');
                 req.form.removeAllListeners('progress');
                 redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'invalid file type' }));
+                uploadFailed = true;
                 return;
             }
         }
@@ -85,7 +88,15 @@ app.post('/', function(req, res, next) {
     });
 
     req.form.complete(function(err, fields, files) {
-        console.log('\nuploaded %s to %s',  files.image.filename, files.image.path);
+        // @TODO remove global state variable, this is ugly
+        if (uploadFailed) {
+            fs.unlinkSync(tmpPath);
+            console.log('### upload failed, deleting tmp file');
+            res.redirect('back');
+            return;
+        }
+
+        console.log('### uploaded %s to %s',  files.image.filename, tmpPath);
 
         if (err) {
             redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
