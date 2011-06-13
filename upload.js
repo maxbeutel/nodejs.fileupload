@@ -9,7 +9,9 @@ var express = require('express'),
     form = require('connect-form'),
     fs = require('fs'),
     mime = require('mime'),
-    sanitize = require('validator').sanitize;
+    sanitize = require('validator').sanitize,
+    sys = require('sys'),
+    exec = require('child_process').exec;
 
 var app = express.createServer(form({ keepExtensions: true }));
 app.set('view engine', 'jade');
@@ -72,6 +74,7 @@ app.post('/', function(req, res, next) {
             console.log('### ERROR: file too large');
             req.form.removeListener('progress', handleProgress);
             redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'file too large' }));
+            fs.unlinkSync(tmpPath);
             uploadFailed = true;
             return;
         }
@@ -82,6 +85,19 @@ app.post('/', function(req, res, next) {
         if (tmpPath != '' && !didMimetypeLookup) {
             didMimetypeLookup = true;
 
+            var child = exec('file --mime-type ' + tmpPath, function (error, stdout, stderr) {
+                var mimetype = stdout.substring(stdout.lastIndexOf(':') + 2, stdout.lastIndexOf('\n'));
+
+                if (!ALLOWED_MIME_TYPES[mimetype]) {
+                    console.log('### ERROR: invalid mimetype');
+                    req.form.removeListener('progress', handleProgress);
+                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: 'invalid file type' }));
+                    uploadFailed = true;
+                }
+            });
+
+
+/*
             var mimetype = mime.lookup(tmpPath);
             
             if (!ALLOWED_MIME_TYPES[mimetype]) {
@@ -91,6 +107,7 @@ app.post('/', function(req, res, next) {
                 uploadFailed = true;
                 return;
             }
+*/
         }
 
         // dont flood client with messages - check if progress really changed since last time
@@ -100,40 +117,41 @@ app.post('/', function(req, res, next) {
         }
 
         lastPercent = percent;
-    });
 
-    req.form.complete(function(err, _, files) {
-        // @TODO remove global state variable, this is ugly
-        if (uploadFailed) {
-            fs.unlinkSync(tmpPath);
-            console.log('### upload failed, deleting tmp file');
-            res.redirect('back');
-            return;
-        }
+        if (didMimetypeLookup && !uploadFailed && req.form.listeners('end').length == 0) {
+            req.form.on('end', function() {
+                        console.log('### uploaded to %s', tmpPath);
 
-        console.log('### uploaded %s to %s',  files.image.filename, tmpPath);
+                        if (false) {
+                            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
+                            next(err);
+                        } else {
+                            fs.readFile(tmpPath, 'binary', function(err, image) {
+                                if (err) {
+                                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
+                                    next(err);
+                                } else {
+                                    // @TODO maybe store some custom data
+                                    // @TODO use correct mimetype
 
-        if (err) {
-            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
-            next(err);
-        } else {
-            fs.readFile(files.image.path, 'binary', function(err, image) {
-                if (err) {
-                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed' }));
-                    next(err);
-                } else {
-                    // @TODO maybe store some custom data
-                    // @TODO use correct mimetype
-
-                    // leave riak out for now
-                    // @TODO it would be better anyway to stream content to bucket
-                    //riakClient.save('images', files.image.filename, image, { contentType: 'jpeg' });
-                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
-                    res.redirect('back');
-                }
+                                    // leave riak out for now
+                                    // @TODO it would be better anyway to stream content to bucket
+                                    //riakClient.save('images', files.image.filename, image, { contentType: 'jpeg' });
+                                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
+                                    res.redirect('back');
+                                }
+                            });
+                        }
             });
         }
     });
+
+
+    req.form.complete();
+
+
+
+
 });
 
 app.listen(3020);
