@@ -62,13 +62,6 @@ app.post('/', function(req, res, next) {
             redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-start', filename: sanitize(fileInfo.name).xss() }));
             req.form.removeListener('fileBegin', publishUploadStart);
         }
-        /*
-        if (fileInfo.path) {
-            console.log('### caught tmp path!');
-
-            tmpPath = fileInfo.path;
-            req.form.removeListener('fileBegin', catchTmpPath);
-        }*/
     });
 
 
