@@ -1,6 +1,6 @@
 require.paths.push(__dirname + '/node_modules');
 
-var MAX_UPLOAD_SIZE = 300 * 1024 * 1024;
+var MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
 var ALLOWED_MIME_TYPES = {'application/pdf': 'pdf', 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/gif': 'gif'};
 
 var express = require('express'),
@@ -53,17 +53,23 @@ app.post('/', function(req, res, next) {
         var percent = (bytesReceived / bytesExpected * 100) | 0;
 
         if (bytesReceived > MAX_UPLOAD_SIZE) {
-            // @TODO bail out
+            console.log('### ERROR: file too large');
+            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'file too large' }));
+            return;
         }
 
         // this is rather ugly
-        if (/*percent > 50 && */tmpPath != '' && !didMimetypeLookup) {
+        // and sucks anyway as mime only makes an lookup based on file extesion not based on file header
+        // @FIXME find something that works
+        if (tmpPath != '' && !didMimetypeLookup) {
             didMimetypeLookup = true;
 
             var mimetype = mime.lookup(tmpPath);
             
             if (!ALLOWED_MIME_TYPES[mimetype]) {
-                // @TODO bail out
+                console.log('### ERROR: invalid mimetype');
+                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', message: 'invalid file type' }));
+                return;
             }
         }
 

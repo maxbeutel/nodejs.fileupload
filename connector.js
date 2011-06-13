@@ -63,7 +63,7 @@ socket.on('connection', function(client) {
                                 // nothing to do for us for now
                             }
 
-                            if (message.type == 'upload-failure') {
+                            if (message.type == 'upload-failed') {
                                 // this totally didn´t work, unsubscribe from channel, let client handle error
                                 redisPubSubClient.unsubscribe('upload:session:' + uploadSessionId);
                             }

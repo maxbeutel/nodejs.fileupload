@@ -40,7 +40,7 @@ $(document).ready(function() {
             alert('Upload success');
         }
 
-        if (message.type == 'upload-failure') {
+        if (message.type == 'upload-failed') {
             $('#upload-form-wrap').hide();
             socket.disconnect();
             alert('Upload failed');
