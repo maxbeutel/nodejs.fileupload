@@ -117,6 +117,7 @@ app.post('/', function(req, res, next) {
                     // @TODO escape user provided filename!
 
                     // leave riak out for now
+                    // @TODO it would be better anyway to stream content to bucket
                     //riakClient.save('images', files.image.filename, image, { contentType: 'jpeg' });
                     redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
                     res.redirect('back');
