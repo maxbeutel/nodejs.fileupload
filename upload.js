@@ -1,9 +1,14 @@
 require.paths.push(__dirname + '/node_modules');
 
+var MAX_UPLOAD_SIZE = 300 * 1024 * 1024;
+var ALLOWED_MIME_TYPES = {'application/pdf': 'pdf', 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/gif': 'gif'};
+
 var express = require('express'),
     redis = require('redis'),
     riak = require('riak-js'),
-    form = require('connect-form');
+    form = require('connect-form'),
+    fs = require('fs'),
+    mime = require('mime');
 
 var app = express.createServer(form({ keepExtensions: true }));
 app.set('view engine', 'jade');
@@ -33,14 +38,34 @@ app.get('/upload-form', function(req, res) {
 
 // upload posted file
 app.post('/', function(req, res, next) {
-    // @ TOD check mimetype && size of uploaded image
     var uploadSessionId = req.session.uploadSessionId;
     var lastPercent = 0;
-    
+    var tmpPath = '';
+    var didMimetypeLookup = false;
+
     console.log('### Starting upload for: ', uploadSessionId);
+
+    req.form.on('fileBegin', function(filedName, fileInfo) {
+        tmpPath = fileInfo.path;
+    });
 
     req.form.on('progress', function(bytesReceived, bytesExpected) {
         var percent = (bytesReceived / bytesExpected * 100) | 0;
+
+        if (bytesReceived > MAX_UPLOAD_SIZE) {
+            // @TODO bail out
+        }
+
+        // this is rather ugly
+        if (/*percent > 50 && */tmpPath != '' && !didMimetypeLookup) {
+            didMimetypeLookup = true;
+
+            var mimetype = mime.lookup(tmpPath);
+            
+            if (!ALLOWED_MIME_TYPES[mimetype]) {
+                // @TODO bail out
+            }
+        }
 
         // dont flood client with messages - check if progress really changed since last time
         if (percent != lastPercent) {
@@ -66,7 +91,9 @@ app.post('/', function(req, res, next) {
                     // @TODO maybe store some custom data
                     // @TODO use correct mimetype
                     // @TODO escape user provided filename!
-                    riakClient.save('images', files.image.filename, image, { contentType: 'jpeg' });
+
+                    // leave riak out for now
+                    //riakClient.save('images', files.image.filename, image, { contentType: 'jpeg' });
                     redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
                     res.redirect('back');
                 }
