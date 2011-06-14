@@ -45,64 +45,45 @@ app.post('/', function(req, res, next) {
     var uploadSessionId = req.session.uploadSessionId;
     var uploadService = new UploadService(req.form);
 
-    uploadService.on('begin', function() {
+    uploadService.on('begin', function(fileName) {
         console.log('### UPLOAD BEGINNING', arguments);
+        
+        redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-start', filename: sanitize(fileName).xss() }));
     });
 
-    uploadService.on('progress', function() {
+    uploadService.on('progress', function(percent) {
         console.log('### UPLOAD PROGRESSING', arguments);
+
+        redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-progress', percent: percent }));
     });
 
-    uploadService.on('failedValidation', function() {
+    uploadService.on('failedValidation', function(message) {
         console.log('### UPLOAD VALIDATION FAILED', arguments);
+        
+        redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: message }));
+        res.redirect('back');
     });
 
-    uploadService.on('failure', function() {
+    uploadService.on('failure', function(message) {
         console.log('### UPLOAD FAILED BECAUSE OF SYSTEM ERROR', arguments);
+
+        redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-failed', error: message }));
+        res.redirect('back');
     });
 
     uploadService.on('success', function() {
         console.log('### UPLOAD SUCCEEDED', arguments);
+
+        redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({ type: 'upload-success' }));
+        res.redirect('back');
     });
-
-    req.form.complete();
-
-    console.log('######');
-    return;
-
-
-
-
-    var uploadSessionId = req.session.uploadSessionId;
-    var lastPercent = 0;
-    var tmpPath = '';
-
-    var validatorsState = {
-        filesize: {executed: false, valid: true},
-        mimetype: {executed: false, valid: true}
-    };
 
     console.log('### Starting upload for: ', uploadSessionId);
 
-    req.form.on('fileBegin', function catchTmpPath(_, fileInfo) {
-        if (fileInfo.path) {
-            console.log('### caught tmp path!');
+    req.form.complete();
 
-            tmpPath = fileInfo.path;
-            
-            req.form.removeListener('fileBegin', catchTmpPath);
-        }
-    });
+    return;
 
-    req.form.on('fileBegin', function publishUploadStart(_, fileInfo) {
-        if (fileInfo.name) {
-            console.log('### FILENAME: ', fileInfo.name);
-
-            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({type: 'upload-start', filename: sanitize(fileInfo.name).xss()}));
-
-            req.form.removeListener('fileBegin', publishUploadStart);
-        }
-    });
 
     req.form.on('fileBegin', function validateMimetype(_, fileInfo) {
         if (fileInfo.path) {
@@ -120,8 +101,7 @@ app.post('/', function(req, res, next) {
                     req.form.removeAllListeners('progress');
                     req.form.removeAllListeners('fileBegin');
 
-                    redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({type: 'upload-failed', error: 'invalid file type'}));
-
+                    
                     fs.unlinkSync(tmpPath);
                 } else {
                     validatorsState.mimetype.valid = true;
@@ -139,7 +119,7 @@ app.post('/', function(req, res, next) {
 
         // dont flood client with messages - check if progress really changed since last time
         if (percent != lastPercent) {
-            redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({type: 'upload-progress', percent: percent}));
+            
             console.log('Uploading: %' + percent + '\n');
         }
 
@@ -192,7 +172,7 @@ app.post('/', function(req, res, next) {
             if (exists) {
                 console.log('### upload succeeded');
 
-                redisPubSubClient.publish('upload:session:' + uploadSessionId, JSON.stringify({type: 'upload-success'}));
+                
 
                 res.redirect('back');
             } else {
