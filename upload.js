@@ -42,7 +42,8 @@ app.get('/upload-form', function(req, res) {
 
 // upload posted file
 app.post('/', function(req, res, next) {
-    var uploadService = new UploadService(req.session.uploadSessionId, req.form);
+    var uploadSessionId = req.session.uploadSessionId;
+    var uploadService = new UploadService(req.form);
 
     uploadService.on('begin', function() {
         console.log('### UPLOAD BEGINNING', arguments);
