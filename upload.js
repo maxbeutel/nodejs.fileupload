@@ -9,7 +9,7 @@ var express = require('express'),
     sanitize = require('validator').sanitize,
     sys = require('sys'),
     path = require('path'),
-    Upload = require('upload').Upload,
+    UploadService = require('upload_service').UploadService,
     exec = require('child_process').exec;
 
 var app = express.createServer(form({keepExtensions: true}));
@@ -42,25 +42,25 @@ app.get('/upload-form', function(req, res) {
 
 // upload posted file
 app.post('/', function(req, res, next) {
-    var upload = new Upload(req.session.uploadSessionId, req.form);
+    var uploadService = new UploadService(req.session.uploadSessionId, req.form);
 
-    upload.on('begin', function() {
+    uploadService.on('begin', function() {
         console.log('### UPLOAD BEGINNING', arguments);
     });
 
-    upload.on('progress', function() {
+    uploadService.on('progress', function() {
         console.log('### UPLOAD PROGRESSING', arguments);
     });
 
-    upload.on('failedValidation', function() {
+    uploadService.on('failedValidation', function() {
         console.log('### UPLOAD VALIDATION FAILED', arguments);
     });
 
-    upload.on('failure', function() {
+    uploadService.on('failure', function() {
         console.log('### UPLOAD FAILED BECAUSE OF SYSTEM ERROR', arguments);
     });
 
-    upload.on('success', function() {
+    uploadService.on('success', function() {
         console.log('### UPLOAD SUCCEEDED', arguments);
     });
 
