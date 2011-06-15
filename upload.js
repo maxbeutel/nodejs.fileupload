@@ -4,15 +4,10 @@ var express = require('express'),
     redis = require('redis'),
     riak = require('riak-js'),
     form = require('connect-form'),
-    fs = require('fs'),
-    mime = require('mime'),
     sanitize = require('validator').sanitize,
-    sys = require('sys'),
-    path = require('path'),
-    UploadService = require('upload_service').UploadService,
-    exec = require('child_process').exec;
+    UploadService = require('upload_service').UploadService;
 
-var app = express.createServer(form({keepExtensions: true}));
+var app = express.createServer(form({ keepExtensions: true }));
 app.set('view engine', 'jade');
 
 var RedisStore = require('connect-redis');
@@ -24,19 +19,19 @@ var redisPubSubClient = redis.createClient();
 
 
 // @TODO would be nice to do some round-robin here/later on in order to not always connect to the same node
-var riakClient = riak.getClient({host: '127.0.0.1', port: 8010});
+var riakClient = riak.getClient({ host: '127.0.0.1', port: 8010 });
 
 // render page with upload form
 app.get('/', function(req, res) {
     var sessionId = req.cookies['connect.sid'];
-    res.render('index', {sessionId: sessionId});
+    res.render('index', { sessionId: sessionId });
 });
 
 
 // form
 app.get('/upload-form', function(req, res) {
     var sessionId = req.cookies['connect.sid'];
-    res.render('upload-form', {sessionId: sessionId});
+    res.render('upload-form', { sessionId: sessionId });
 });
 
 
